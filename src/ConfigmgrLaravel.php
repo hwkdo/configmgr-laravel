@@ -33,6 +33,44 @@ class ConfigmgrLaravel
     }
 
     /**
+     * BIOS-Seriennummern aus der Hardwareinventur (v_GS_PC_BIOS), Schlüssel ist der Computername.
+     *
+     * Abgleich ist exakt über NAME0 (case-insensitive), nicht über LIKE.
+     *
+     * @return array<string, string|null> UPPER(trim(NAME0)) => SerialNumber0 oder null
+     */
+    public function getBiosSerialNumbersByComputerName(): array
+    {
+        $rows = DB::connection('sccm')->select(
+            <<<'SQL'
+            SELECT
+                LTRIM(RTRIM(sys.NAME0)) AS name,
+                LTRIM(RTRIM(bios.SerialNumber0)) AS serial_number
+            FROM v_R_System sys
+            LEFT JOIN v_GS_PC_BIOS bios ON bios.ResourceID = sys.ResourceID
+            WHERE sys.NAME0 IS NOT NULL AND LTRIM(RTRIM(sys.NAME0)) <> ''
+            SQL
+        );
+
+        $serialsByName = [];
+        foreach ($rows as $row) {
+            $name = strtoupper(trim((string) ($row->name ?? '')));
+            if ($name === '') {
+                continue;
+            }
+
+            $serial = trim((string) ($row->serial_number ?? ''));
+            $serial = $serial === '' ? null : $serial;
+
+            if (! array_key_exists($name, $serialsByName) || ($serialsByName[$name] === null && $serial !== null)) {
+                $serialsByName[$name] = $serial;
+            }
+        }
+
+        return $serialsByName;
+    }
+
+    /**
      * Alle distinct Rechnernamen aus v_R_System (optional gefiltert nach AD-Ressourcendomäne).
      *
      * Filter nutzt Spalte {@code Resource_Domain_OR_Workgr0} in {@code v_R_System} (NetBIOS-Domäne / Workgroup; je nach SCCM-Version kann der Spaltenname abweichen).
